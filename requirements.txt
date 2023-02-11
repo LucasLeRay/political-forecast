@@ -2,3 +2,7 @@ tweepy==4.12.1
 python-dotenv==0.21.1
 nltk==3.8.1
 pandas==1.5.3
+spacy==3.5.0
+scikit-learn==1.2.1
+numpy==1.24.1
+matplotlib==3.6.3
