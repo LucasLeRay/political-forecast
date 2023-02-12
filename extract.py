@@ -1,7 +1,7 @@
 import argparse
 import itertools
-import os
 import logging
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -22,8 +22,8 @@ parser.add_argument('twitter_name', help="""
     Twitter username of the account to extract.
 """)
 
-FOLLOWERS_COUNT = 100 # max 1000
-TWEETS_COUNT = 10 # max 200
+FOLLOWERS_COUNT = 1000 # max 1000
+TWEETS_COUNT = 50 # max 200
 MINIMUM_TWEET_PER_USER = 10
 
 DATA_FOLDER = Path(__file__).parent / "data"
@@ -64,22 +64,28 @@ def get_followers(user_id, *, client):
 def tweets_from_followers(followers, *, client):
     def filter_and_flatten(l):
         return list(itertools.chain.from_iterable(
-            filter(lambda e: e is not None and len(e) >= MINIMUM_TWEET_PER_USER, l)
+            filter(
+                lambda e: e is not None and len(e) >= MINIMUM_TWEET_PER_USER, l
+            )
         ))
 
-    return list(
-        map(
-            lambda t: t.text,
-            filter_and_flatten([
-                client.get_users_tweets(id=follower, max_results=TWEETS_COUNT, exclude="retweets").data
-                for follower in followers
-            ])
-        )
-    )
+    return filter_and_flatten([
+        client.get_users_tweets(
+            id=follower,
+            max_results=TWEETS_COUNT,
+            exclude="retweets",
+            expansions="author_id"
+        ).data
+        for follower in followers
+    ])
 
 
 def save_tweets(tweets, *, account_name):
-    df = pd.DataFrame({"tweet": tweets, "account": account_name})
+    df = pd.DataFrame({
+        "tweet": [t.text for t in tweets],
+        "user_id": [t.author_id for t in tweets],
+        "account": account_name
+    })
     df.to_csv(f"{DATA_FOLDER / account_name}.csv", index=False)
 
 
