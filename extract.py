@@ -25,6 +25,7 @@ parser.add_argument('twitter_name', help="""
 FOLLOWERS_COUNT = 1000 # max 1000
 TWEETS_COUNT = 50 # max 200
 MINIMUM_TWEET_PER_USER = 10
+TWEET_LANG = "fr"
 
 DATA_FOLDER = Path(__file__).parent / "data"
 DATA_FOLDER.mkdir(exist_ok=True)
@@ -62,23 +63,32 @@ def get_followers(user_id, *, client):
 
 
 def tweets_from_followers(followers, *, client):
-    def filter_and_flatten(l):
-        return list(itertools.chain.from_iterable(
-            filter(
-                lambda e: e is not None and len(e) >= MINIMUM_TWEET_PER_USER, l
-            )
-        ))
+    def filter_tweet(tweet):
+        return tweet.lang == TWEET_LANG
 
-    return filter_and_flatten([
-        client.get_users_tweets(
+    def filter_user(user_tweets):
+        return len(user_tweets) >= MINIMUM_TWEET_PER_USER
+
+    tweets = filter(filter_user, [
+        list(filter(filter_tweet, client.get_users_tweets(
             id=follower,
             max_results=TWEETS_COUNT,
             exclude="retweets",
-            expansions="author_id"
-        ).data
+            expansions="author_id",
+            tweet_fields="lang"
+        ).data or []))
         for follower in followers
     ])
 
+    return list(itertools.chain.from_iterable(tweets))
+
+
+def get_tweet_data_path(account_name, *, _count=0):
+    path = DATA_FOLDER / f"{account_name}-{_count}.csv"
+    if path.exists():
+        return get_tweet_data_path(account_name, _count=_count + 1)
+    return path
+    
 
 def save_tweets(tweets, *, account_name):
     df = pd.DataFrame({
@@ -86,7 +96,8 @@ def save_tweets(tweets, *, account_name):
         "user_id": [t.author_id for t in tweets],
         "account": account_name
     })
-    df.to_csv(f"{DATA_FOLDER / account_name}.csv", index=False)
+
+    df.to_csv(get_tweet_data_path(account_name), index=False)
 
 
 if __name__ == "__main__":
