@@ -21,8 +21,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('twitter_name', help="""
     Twitter username of the account to extract.
 """)
+parser.add_argument(
+    '-c', '--count', help="How many followers (max: 1000)", default=100
+)
+parser.add_argument('--pagination-token')
 
-FOLLOWERS_COUNT = 1000 # max 1000
 TWEETS_COUNT = 50 # max 200
 MINIMUM_TWEET_PER_USER = 10
 TWEET_LANG = "fr"
@@ -37,13 +40,19 @@ def main(args):
 
     logger.info(f"Getting followers of {args.twitter_name}...")
     user_id = get_twitter_id(args.twitter_name, client=client)
-    followers = get_followers(user_id, client=client)
+    followers, next_token = get_followers(
+        user_id,
+        client=client,
+        count=args.count,
+        pagination_token=args.pagination_token
+    )
+    logger.info(f"Next token for pagination is {next_token}")
 
     logger.info(f"Getting tweets of followers of {args.twitter_name}...")
     tweets = tweets_from_followers(followers, client=client)
 
     logger.info(f"Saving {len(tweets)} tweets...")
-    save_tweets(tweets, account_name=args.twitter_name)
+    save_tweets(tweets, next_token=next_token, account_name=args.twitter_name)
 
 
 def get_api_client(bearer_token):
@@ -54,12 +63,12 @@ def get_twitter_id(twitter_name, *, client):
     return client.get_user(username=twitter_name).data.id
 
 
-def get_followers(user_id, *, client):
-    return [
-        user.id
-        for user
-        in client.get_users_followers(user_id, max_results=FOLLOWERS_COUNT).data
-    ]
+def get_followers(user_id, *, client, count, pagination_token):
+    resp = client.get_users_followers(
+        user_id, max_results=count, pagination_token=pagination_token
+    )
+
+    return [user.id for user in resp.data], resp.meta["next_token"]
 
 
 def tweets_from_followers(followers, *, client):
@@ -90,11 +99,12 @@ def get_tweet_data_path(account_name, *, _count=0):
     return path
     
 
-def save_tweets(tweets, *, account_name):
+def save_tweets(tweets, *, next_token, account_name):
     df = pd.DataFrame({
         "tweet": [t.text for t in tweets],
         "user_id": [t.author_id for t in tweets],
-        "account": account_name
+        "account": account_name,
+        "next_token": next_token
     })
 
     df.to_csv(get_tweet_data_path(account_name), index=False)
